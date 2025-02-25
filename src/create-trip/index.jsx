@@ -9,24 +9,12 @@ import { chatSession } from "@/service/AIModal";
 import React, { useEffect, useState } from "react";
 import GooglePlacesAutocomplete from "react-google-places-autocomplete";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-} from "@/components/ui/dialog";
-import { FcGoogle } from "react-icons/fc";
-import { useGoogleLogin } from "@react-oauth/google";
-import axios from "axios";
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "@/service/firebaseConfig";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import { useNavigate } from "react-router-dom";
 
 function CreateTrip() {
   const [place, setPlace] = useState(null);
   const [formData, setFormData] = useState({});
-  const [openDialog, setOpenDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -41,18 +29,7 @@ function CreateTrip() {
     console.log(formData);
   }, [formData]);
 
-  const login = useGoogleLogin({
-    onSuccess: (tokenInfo) => GetUserProfile(tokenInfo),
-    onError: (error) => console.log(error),
-  });
-
   const OnGenerateTrip = async () => {
-    const user = localStorage.getItem("user");
-    if (!user) {
-      setOpenDialog(true);
-      return;
-    }
-
     if (
       (formData.noOfDays > 5 && !formData.location) ||
       !formData.budget ||
@@ -61,6 +38,7 @@ function CreateTrip() {
       toast("Please fill all the Details");
       return;
     }
+
     setLoading(true);
     const FINAL_PROMPT = AI_PROMPT.replace(
       "{location}",
@@ -74,27 +52,18 @@ function CreateTrip() {
     try {
       const result = await chatSession.sendMessage(FINAL_PROMPT);
       const responseText = await result?.response?.text();
-      console.log("Raw Response Text:", responseText); // Log the response text to inspect it
 
       if (!responseText) {
         throw new Error("Empty response received");
       }
 
-      // Check if responseText is a valid JSON string
       try {
         const parsedResponse = JSON.parse(responseText);
-        console.log("Parsed Response:", parsedResponse); // Log the parsed response
+        console.log("Parsed Response:", parsedResponse);
         SaveAitrip(parsedResponse);
       } catch (parseError) {
         console.error("Error parsing responseText:", parseError.message);
-        console.log("Failed Response Text:", responseText); // Log the exact problematic JSON
-        // Log a snippet around the problematic JSON portion
-        const errorPosition = parseError.message.match(/position (\d+)/)?.[1];
-        if (errorPosition) {
-          const errorStart = Math.max(0, errorPosition - 30);
-          const errorEnd = Math.min(responseText.length, Number(errorPosition) + 30);
-          console.log("Problematic JSON Portion:", responseText.substring(errorStart, errorEnd));
-        }
+        console.log("Failed Response Text:", responseText);
         toast.error("Failed to parse trip data. Please try again.");
       }
     } catch (error) {
@@ -108,41 +77,15 @@ function CreateTrip() {
   const SaveAitrip = async (parsedTripData) => {
     try {
       setLoading(true);
-      const user = JSON.parse(localStorage.getItem("user"));
       const docId = Date.now().toString();
-      console.log("Parsed TripData:", parsedTripData); // Log the parsedTripData to inspect it
-      await setDoc(doc(db, "AITrips", docId), {
-        userSelection: formData,
-        tripData: parsedTripData,
-        userEmail: user?.email,
-        id: docId,
-      });
-      navigate('/view-trip/' + docId);
+      console.log("Parsed TripData:", parsedTripData);
+      navigate("/view-trip/" + docId);
     } catch (error) {
       console.error("Error saving TripData:", error.message);
       toast.error("Failed to save trip data. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
-
-  const GetUserProfile = (tokenInfo) => {
-    axios
-      .get(
-        `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${tokenInfo?.access_token}`,
-        {
-          headers: {
-            Authorization: `Bearer ${tokenInfo?.access_token}`,
-            Accept: "application/json",
-          },
-        }
-      )
-      .then((res) => {
-        console.log(res);
-        localStorage.setItem("user", JSON.stringify(res.data));
-        setOpenDialog(false);
-        OnGenerateTrip();
-      });
   };
 
   return (
@@ -226,26 +169,6 @@ function CreateTrip() {
           )}
         </Button>
       </div>
-      <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogDescription>
-              <img src="/logo.svg" alt="Logo" />
-              <h2 className="font-bold text-lg mt-7">
-                Please sign in with Google
-              </h2>
-              <p>Sign in to the App with Google Authentication securely</p>
-              <Button
-                onClick={login}
-                className="w-full mt-5 flex gap-4 items-center"
-              >
-                <FcGoogle className="h-7 w-7" />
-                Sign In With Google
-              </Button>
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
